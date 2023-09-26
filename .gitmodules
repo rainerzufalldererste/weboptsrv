@@ -1,0 +1,6 @@
+[submodule "3rdParty/zydec"]
+	path = 3rdParty/zydec
+	url = https://github.com/rainerzufalldererste/zydec.git
+[submodule "3rdParty/execution-flow"]
+	path = 3rdParty/execution-flow
+	url = https://github.com/rainerzufalldererste/execution-flow.git
