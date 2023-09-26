@@ -86,7 +86,7 @@ crow::response handle_compile(const crow::request &req, const CompilerType type,
   const auto &src = x["src"].s();
 
   std::string compileCmd;
-  std::string dumpCmd = "objdump -d ";
+  std::string dumpCmd = "objdump -M intel-mnemonic -j .text -C -d --insn-width=15 ";
   std::string objFileName;
 
   switch (type)
@@ -115,6 +115,7 @@ crow::response handle_compile(const crow::request &req, const CompilerType type,
 
   dumpCmd.append(std::to_string(requestId));
   dumpCmd.append(".o");
+  dumpCmd.append("  2>&1");
 
   if (opt == "O0")
     compileCmd.append(" -O0");
@@ -174,6 +175,7 @@ crow::response handle_compile(const crow::request &req, const CompilerType type,
 
   compileCmd.append(" ");
   compileCmd.append(sourceName);
+  compileCmd.append("  2>&1");
   
   std::string compilerOut;
 
@@ -219,7 +221,7 @@ crow::response handle_compile(const crow::request &req, const CompilerType type,
       return crow::response(crow::status::INTERNAL_SERVER_ERROR);
     }
 
-    while (fgets(line, sizeof(line), pCompilerOutput) != NULL)
+    while (fgets(line, sizeof(line), pCompilerOutput) != nullptr)
       compilerOut.append(line);
 
     pclose(pCompilerOutput);
@@ -239,7 +241,17 @@ crow::response handle_compile(const crow::request &req, const CompilerType type,
       return crow::response(crow::status::INTERNAL_SERVER_ERROR);
     }
 
-    while (fgets(line, sizeof(line), pObjDumpOutput) != NULL)
+    // Skip initial information.
+    while (fgets(line, 2, pObjDumpOutput) != nullptr)
+    {
+      if (line[0] == '<')
+      {
+        objdumpOut = "<";
+        break;
+      }
+    }
+
+    while (fgets(line, sizeof(line), pObjDumpOutput) != nullptr)
       objdumpOut.append(line);
 
     pclose(pObjDumpOutput);
