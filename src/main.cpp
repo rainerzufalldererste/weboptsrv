@@ -40,6 +40,8 @@ namespace asio
 #else
 #endif
 
+#include "zydec.h"
+
 //////////////////////////////////////////////////////////////////////////
 
 enum CompilerType
@@ -49,11 +51,8 @@ enum CompilerType
 };
 
 crow::response handle_compile(const crow::request &req, const CompilerType type, const size_t version);
-
-crow::response handle_root()
-{
-  return crow::response(crow::status::OK, "hello!");
-}
+crow::response handle_zydec(const crow::request &req);
+crow::response handle_execution_flow(const crow::request &req);
 
 //////////////////////////////////////////////////////////////////////////
 
@@ -64,9 +63,10 @@ int32_t main(void)
   auto &cors = app.get_middleware<crow::CORSHandler>();
   cors.global().origin("http://localhost");
 
-  CROW_ROUTE(app, "/")([]() { return handle_root(); });
   CROW_ROUTE(app, "/g++-x64-13").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_GCCpp, 13); });
   CROW_ROUTE(app, "/clang++-x64-16").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_Clangpp, 16); });
+
+  CROW_ROUTE(app, "/zydec").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_zydec(req); });
 
   app.port(61919).multithreaded().run();
 }
@@ -78,12 +78,19 @@ static std::atomic<size_t> _RequestID = 0;
 crow::response handle_compile(const crow::request &req, const CompilerType type, const size_t version)
 {
   auto x = crow::json::load(req.body);
+
   if (!x || !x.has("src") || !x.has("opt") || !x.has("march"))
     return crow::response(crow::status::BAD_REQUEST);
 
   const auto &opt = x["opt"].s();
   const auto &march = x["march"].s();
   const auto &src = x["src"].s();
+
+  if (src.size() > 1024 * 8)
+  {
+    printf("Rejecting input, as src size: %" PRIu64 "\n", src.size());
+    return crow::response(crow::status::PAYLOAD_TOO_LARGE);
+  }
 
   std::string compileCmd;
   std::string dumpCmd = "objdump -M intel-mnemonic -j .text -C -d --insn-width=15 ";
@@ -264,4 +271,99 @@ crow::response handle_compile(const crow::request &req, const CompilerType type,
 
   return crow::response(crow::status::OK, ret);
 #endif
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+crow::response handle_zydec(const crow::request &req)
+{
+  auto x = crow::json::load(req.body);
+
+  if (!x || !x.has("bytes") || !x.has("addr"))
+    return crow::response(crow::status::BAD_REQUEST);
+
+  const auto &bytesBase64 = x["bytes"].s();
+  const uint64_t addressDisplayOffset = x["addr"].i();
+
+  if (bytesBase64.size() > 1024 * 2)
+  {
+    printf("Rejecting zydec, as bytesBase64 size: %" PRIu64 "\n", bytesBase64.size());
+    return crow::response(crow::status::PAYLOAD_TOO_LARGE);
+  }
+
+  const auto &bytes = crow::utility::base64decode(bytesBase64);
+
+  ZydisDecoder decoder;
+  ZydisFormatter formatter;
+
+  if (!ZYAN_SUCCESS(ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64)) || !ZYAN_SUCCESS(ZydisFormatterInit(&formatter, ZYDIS_FORMATTER_STYLE_INTEL)) || !ZYAN_SUCCESS(ZydisFormatterSetProperty(&formatter, ZYDIS_FORMATTER_PROP_FORCE_SEGMENT, ZYAN_TRUE)) || !ZYAN_SUCCESS(ZydisFormatterSetProperty(&formatter, ZYDIS_FORMATTER_PROP_FORCE_SIZE, ZYAN_TRUE)))
+  {
+    puts("Failed to init zydis decoder, formatter.");
+    return crow::response(crow::status::INTERNAL_SERVER_ERROR);
+  }
+
+  ZydisDecodedInstruction instruction;
+  ZydisDecodedOperand operands[10];
+  ZydecFormattingInfo info;
+  ZydecLinearContext linearContext;
+
+  std::string zydecOut;
+
+  info.afterCallRegisterRetentionMode = ZydecFormattingInfo::AfterCallRegisterRetentionMode::Linux;
+
+  char decompBuffer[1024] = "";
+
+  size_t virtualAddress = 0;
+  const size_t fileSize = bytes.size();
+  const uint8_t *pData = reinterpret_cast<const uint8_t *>(bytes.c_str());
+
+  while (virtualAddress < fileSize)
+  {
+    if (!(ZYAN_SUCCESS(ZydisDecoderDecodeFull(&decoder, pData + virtualAddress, fileSize - virtualAddress, &instruction, operands))))
+    {
+      puts("Failed to zydis decode bytes.");
+      return crow::response(crow::status::BAD_REQUEST);
+    }
+
+    bool hasTranslation = false;
+
+    if (!zydec_TranslateInstructionWithLinearContext(&linearContext, &instruction, operands, sizeof(operands) / sizeof(operands[0]), virtualAddress + addressDisplayOffset, decompBuffer, sizeof(decompBuffer), &hasTranslation, &info) || !hasTranslation)
+    {
+      decompBuffer[0] = '/';
+      decompBuffer[1] = '/';
+      decompBuffer[2] = ' ';
+      decompBuffer[3] = '\0';
+
+      if (!(ZYAN_SUCCESS(ZydisFormatterFormatInstruction(&formatter, &instruction, operands, sizeof(operands) / sizeof(operands[0]), decompBuffer + 3, sizeof(decompBuffer) - 3, virtualAddress + addressDisplayOffset, nullptr))))
+      {
+        puts("Failed to zydis format instruction.");
+        return crow::response(crow::status::BAD_REQUEST);
+      }
+    }
+
+    zydecOut.append(std::to_string(virtualAddress + addressDisplayOffset));
+    zydecOut.append("\t");
+    zydecOut.append(decompBuffer);
+    zydecOut.append("\t");
+
+    const char *isaSet = ZydisISASetGetString(instruction.meta.isa_set);
+
+    if (isaSet)
+      zydecOut.append(isaSet);
+
+    zydecOut.append("\n");
+
+    if (instruction.length == 0)
+    {
+      puts("Invalid zydis instruction length.");
+      return crow::response(crow::status::BAD_REQUEST);
+    }
+
+    virtualAddress += instruction.length;
+  }
+
+  crow::json::wvalue ret;
+  ret["zydec"] = zydecOut.c_str();
+
+  return crow::response(crow::status::OK, ret);
 }

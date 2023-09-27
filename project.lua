@@ -25,9 +25,6 @@ project(ProjectName)
     cppdialect "C++17"
     defines { "__llvm__" }
   
-  filter { "configurations:Release" }
-    flags { "LinkTimeOptimization" }
-  
   filter { }
   
   defines { "_CRT_SECURE_NO_WARNINGS", "SSE2" }
@@ -56,7 +53,9 @@ project(ProjectName)
   filter { "system:linux" }
     links { "execution-flow" }
     links { "zydec" }
-    --links { "3rdParty/zydis/3rdParty/zydis/lib/Zydis.lib" }
+
+    libdirs { "3rdParty/zydec/3rdParty/zydis/lib" }
+    links { "Zydis" }
   filter { }
   
   targetname(ProjectName)
