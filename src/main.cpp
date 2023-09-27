@@ -42,6 +42,8 @@ namespace asio
 
 #include "zydec.h"
 
+#include "execution-flow.h"
+
 //////////////////////////////////////////////////////////////////////////
 
 enum CompilerType
@@ -67,6 +69,7 @@ int32_t main(void)
   CROW_ROUTE(app, "/clang++-x64-16").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_Clangpp, 16); });
 
   CROW_ROUTE(app, "/zydec").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_zydec(req); });
+  CROW_ROUTE(app, "/execution_flow").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_execution_flow(req); });
 
   app.port(61919).multithreaded().run();
 }
@@ -364,6 +367,76 @@ crow::response handle_zydec(const crow::request &req)
 
   crow::json::wvalue ret;
   ret["zydec"] = zydecOut.c_str();
+
+  return crow::response(crow::status::OK, ret);
+}
+
+//////////////////////////////////////////////////////////////////////////
+
+crow::response handle_execution_flow(const crow::request &req)
+{
+  auto x = crow::json::load(req.body);
+
+  if (!x || !x.has("bytes") || !x.has("addr") || !x.has("march"))
+    return crow::response(crow::status::BAD_REQUEST);
+
+  const auto &bytesBase64 = x["bytes"].s();
+  const uint64_t startAddress = x["addr"].i();
+  const auto &march = x["march"].s();
+
+  CoreArchitecture arch;
+
+  if (march == "adl")      arch = CoreArchitecture::Alderlake;
+  else if (march == "brw") arch = CoreArchitecture::Broadwell;
+  else if (march == "cnl") arch = CoreArchitecture::Cannonlake;
+  else if (march == "ccl") arch = CoreArchitecture::Cascadelake;
+  else if (march == "cpl") arch = CoreArchitecture::Cooperlake;
+  else if (march == "elr") arch = CoreArchitecture::EmeraldRapids;
+  else if (march == "gmt") arch = CoreArchitecture::Goldmont;
+  else if (march == "gmp") arch = CoreArchitecture::GoldmontPlus;
+  else if (march == "gdr") arch = CoreArchitecture::GrandRidge;
+  else if (march == "gtr") arch = CoreArchitecture::GraniteRapids;
+  else if (march == "hsw") arch = CoreArchitecture::Haswell;
+  else if (march == "ilc") arch = CoreArchitecture::IcelakeClient;
+  else if (march == "lcs") arch = CoreArchitecture::IcelakeServer;
+  else if (march == "ivb") arch = CoreArchitecture::IvyBridge;
+  else if (march == "mtl") arch = CoreArchitecture::Meteorlake;
+  else if (march == "rtl") arch = CoreArchitecture::Raptorlake;
+  else if (march == "rkl") arch = CoreArchitecture::Rocketlake;
+  else if (march == "sdb") arch = CoreArchitecture::Sandybridge;
+  else if (march == "spr") arch = CoreArchitecture::SapphireRapids;
+  else if (march == "srf") arch = CoreArchitecture::Sierraforest;
+  else if (march == "svm") arch = CoreArchitecture::Silvermont;
+  else if (march == "slc") arch = CoreArchitecture::SkylakeClient;
+  else if (march == "slx") arch = CoreArchitecture::SkylakeX;
+  else if (march == "sls") arch = CoreArchitecture::SkylakeServer;
+  else if (march == "tgl") arch = CoreArchitecture::Tigerlake;
+  else if (march == "trm") arch = CoreArchitecture::Tremont;
+  else if (march == "zn1") arch = CoreArchitecture::Zen1;
+  else if (march == "zn2") arch = CoreArchitecture::Zen2;
+  else if (march == "zn3") arch = CoreArchitecture::Zen3;
+  else if (march == "zn4") arch = CoreArchitecture::Zen4;
+  else return crow::response(crow::status::BAD_REQUEST);
+
+  if (bytesBase64.size() > 1024 * 2)
+  {
+    printf("Rejecting zydec, as bytesBase64 size: %" PRIu64 "\n", bytesBase64.size());
+    return crow::response(crow::status::PAYLOAD_TOO_LARGE);
+  }
+
+  const auto &bytes = crow::utility::base64decode(bytesBase64);
+
+  PortUsageFlow flow;
+
+  if (!execution_flow_create(bytes.c_str(), bytes.size(), &flow, arch, 8, 0))
+  {
+    puts("execution_flow_create failed");
+    return crow::response(crow::status::INTERNAL_SERVER_ERROR);
+  }
+
+  crow::json::wvalue ret;
+
+  (void)startAddress;
 
   return crow::response(crow::status::OK, ret);
 }

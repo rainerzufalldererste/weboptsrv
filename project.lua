@@ -12,7 +12,7 @@ project(ProjectName)
     ignoredefaultlibraries { "msvcrt" }
   filter { "system:linux" }
     cppdialect "C++20"
-    buildoptions { "-DASIO_STANDALONE" }
+    buildoptions { "-DASIO_STANDALONE" } -- is this needed?
   filter { }
 
   filter { "system:windows", "configurations:not *Clang" }
@@ -53,11 +53,17 @@ project(ProjectName)
   filter { "system:linux" }
     links { "execution-flow" }
     links { "zydec" }
-
+    
     libdirs { "3rdParty/zydec/3rdParty/zydis/lib" }
     links { "Zydis" }
+    
+    libdirs { "/usr/lib/llvm-17/lib" }
+    links { "LLVMAnalysis", "LLVMBitstreamReader", "LLVMCodeGen", "LLVMTransformUtils", "LLVMTarget", "LLVMSelectionDAG", "LLVMGlobalISel", "LLVMCFGuard", "LLVMScalarOpts", "LLVMObjCARCOpts", "LLVMDebugInfoCodeView", "LLVMDebugInfoPDB", "LLVMMC", "LLVMMCParser", "LLVMAsmParser", "LLVMRemarks", "LLVMTargetParser", "LLVMX86Disassembler", "LLVMBinaryFormat", "LLVMCodeGenTypes", "LLVMDebugInfoDWARF", "LLVMDemangle", "LLVMMCA", "LLVMObject", "LLVMSupport", "LLVMTextAPI", "LLVMX86Info", "LLVMBitReader", "LLVMCore", "LLVMDebugInfoMSF", "LLVMIRReader", "LLVMMCDisassembler", "LLVMProfileData", "LLVMSymbolize", "LLVMX86CodeGen", "LLVMX86Desc", "LLVMX86TargetMCA" }
+    
+    libdirs { "/usr/lib/x86_64-linux-gnu" }
+    links { "tinfo", "z", "zstd" }
   filter { }
-  
+    
   targetname(ProjectName)
   targetdir "builds/bin"
   debugdir "builds/bin"
