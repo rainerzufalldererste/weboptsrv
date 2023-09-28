@@ -65,8 +65,13 @@ int32_t main(void)
   auto &cors = app.get_middleware<crow::CORSHandler>();
   cors.global().origin("http://localhost");
 
+  CROW_ROUTE(app, "/g++-x64-11").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_GCCpp, 11); });
+  CROW_ROUTE(app, "/g++-x64-12").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_GCCpp, 12); });
   CROW_ROUTE(app, "/g++-x64-13").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_GCCpp, 13); });
+  CROW_ROUTE(app, "/clang++-x64-14").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_Clangpp, 14); });
+  CROW_ROUTE(app, "/clang++-x64-15").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_Clangpp, 15); });
   CROW_ROUTE(app, "/clang++-x64-16").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_Clangpp, 16); });
+  CROW_ROUTE(app, "/clang++-x64-17").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_Clangpp, 17); });
 
   CROW_ROUTE(app, "/zydec").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_zydec(req); });
   CROW_ROUTE(app, "/execution_flow").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_execution_flow(req); });
@@ -466,6 +471,7 @@ crow::response handle_execution_flow(const crow::request &req)
       instruction["addr"] = instructionInfo.instructionByteOffset + startAddress;
 
       // Stalls.
+      if (instructionInfo.stallInfo.size())
       {
         crow::json::wvalue stalls;
         size_t stallCount = 0;
@@ -534,7 +540,7 @@ crow::response handle_execution_flow(const crow::request &req)
             p["name"] = regP.registerName;
             p["it"] = iteration;
             p["origin_it"] = regP.origin.value().iterationIndex;
-            p["origin_offset"] = (int64_t)instructionInfo.instructionIndex - regP.origin.value().instructionIndex;
+            p["origin_offset"] = (int64_t)regP.origin.value().instructionIndex - (int64_t)instructionInfo.instructionIndex;
             p["origin_addr"] = flow.instructionExecutionInfo[regP.origin.value().instructionIndex].instructionByteOffset + startAddress;
 
             pressure[pressureCount++] = std::move(p);
@@ -549,7 +555,7 @@ crow::response handle_execution_flow(const crow::request &req)
             p["cycles"] = memP.selfPressureCycles;
             p["it"] = iteration;
             p["origin_it"] = memP.origin.value().iterationIndex;
-            p["origin_offset"] = (int64_t)instructionInfo.instructionIndex - memP.origin.value().instructionIndex;
+            p["origin_offset"] = (int64_t)memP.origin.value().instructionIndex - (int64_t)instructionInfo.instructionIndex;
             p["origin_addr"] = flow.instructionExecutionInfo[memP.origin.value().instructionIndex].instructionByteOffset + startAddress;
 
             pressure[pressureCount++] = std::move(p);
@@ -566,7 +572,7 @@ crow::response handle_execution_flow(const crow::request &req)
               p["cycles"] = _port.pressureCycles;
               p["it"] = iteration;
               p["origin_it"] = _port.origin.value().iterationIndex;
-              p["origin_offset"] = (int64_t)instructionInfo.instructionIndex - _port.origin.value().instructionIndex;
+              p["origin_offset"] = (int64_t)_port.origin.value().instructionIndex - (int64_t)instructionInfo.instructionIndex;
               p["origin_addr"] = flow.instructionExecutionInfo[_port.origin.value().instructionIndex].instructionByteOffset + startAddress;
               p["port_name"] = _port.resourceName;
 
