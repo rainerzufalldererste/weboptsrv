@@ -437,16 +437,6 @@ crow::response handle_execution_flow(const crow::request &req)
 
   crow::json::wvalue ret;
 
-  size_t allEarliestDispatch = (size_t)-1;
-  size_t allLastRetire = 0;
-  size_t allEarliestIssued = (size_t)-1;
-  size_t allLastExecuted = 0;
-  size_t allTotalDispatched = 0;
-  size_t allTotalPending = 0;
-  size_t allTotalReady = 0;
-  size_t allTotalExecuting = 0;
-  size_t allTotalRetiring = 0;
-
   // Ports.
   {
     crow::json::wvalue ports;
@@ -458,13 +448,153 @@ crow::response handle_execution_flow(const crow::request &req)
     ret["ports"] = std::move(ports);
   }
 
+  size_t earliestDispatch = (size_t)-1;
+  size_t lastRetire = 0;
+  size_t earliestIssued = (size_t)-1;
+  size_t lastExecuted = 0;
+
+  // Instructions.
+  {
+    crow::json::wvalue instructions;
+    size_t instructionIndex = (size_t)-1;
+
+    for (const auto &instructionInfo : flow.instructionExecutionInfo)
+    {
+      ++instructionIndex;
+
+      crow::json::wvalue instruction;
+      instruction["addr"] = instructionInfo.instructionByteOffset + startAddress;
+
+      // Stalls.
+      {
+        crow::json::wvalue stalls;
+        size_t stallCount = 0;
+
+        for (const auto &_b : instructionInfo.stallInfo)
+          stalls[stallCount++] = _b;
+
+        instruction["stalls"] = std::move(stalls);
+      }
+
+      size_t dispatched = 0;
+      size_t pending = 0;
+      size_t ready = 0;
+      size_t executing = 0;
+      size_t retiring = 0;
+      size_t uops = 0;
+
+      const size_t iterations = instructionInfo.perIteration.size();
+
+      // Add Dependencies & Calculate Average Clocks.
+      {
+        crow::json::wvalue pressure;
+        size_t pressureCount = 0;
+
+        crow::json::wvalue itsInfo;
+
+        for (size_t iteration = 0; iteration < iterations; iteration++)
+        {
+          const auto &it = instructionInfo.perIteration[iteration];
+
+          dispatched += it.clockPending - it.clockDispatched;
+          pending += it.clockReady - it.clockPending;
+          ready += it.clockIssued - it.clockReady;
+          executing += it.clockExecuted - it.clockIssued;
+          retiring += it.clockRetired - it.clockExecuted;
+          uops += it.uOps;
+
+          earliestDispatch = std::min(earliestDispatch, it.clockDispatched);
+          lastRetire = std::max(lastRetire, it.clockRetired);
+          earliestIssued = std::min(earliestIssued, it.clockIssued);
+          lastExecuted = std::max(lastExecuted, it.clockExecuted);
+
+          crow::json::wvalue itInfo;
+          itInfo["issued"] = it.clockIssued;
+          itInfo["executed"] = it.clockExecuted;
+
+          crow::json::wvalue ports;
+
+          for (size_t i = 0; i < it.usage.size(); i++)
+            ports[i] = it.usage[i].resourceIndex;
+
+          itInfo["ports"] = std::move(ports);
+          itsInfo[iteration] = std::move(itInfo);
+
+          const auto &regP = instructionInfo.perIteration[iteration].registerPressure;
+
+          if (regP.selfPressureCycles > 0 && regP.origin.has_value() && regP.origin.value().iterationIndex != (size_t)-1)
+          {
+            crow::json::wvalue p;
+            p["type"] = "reg";
+            p["cycles"] = regP.selfPressureCycles;
+            p["name"] = regP.registerName;
+            p["it"] = iteration;
+            p["origin_it"] = regP.origin.value().iterationIndex;
+            p["origin_offset"] = (int64_t)instructionInfo.instructionIndex - regP.origin.value().instructionIndex;
+            p["origin_addr"] = flow.instructionExecutionInfo[regP.origin.value().instructionIndex].instructionByteOffset + startAddress;
+
+            pressure[pressureCount++] = std::move(p);
+          }
+
+          const auto &memP = instructionInfo.perIteration[iteration].memoryPressure;
+
+          if (memP.selfPressureCycles > 0 && memP.origin.has_value() && memP.origin.value().iterationIndex != (size_t)-1)
+          {
+            crow::json::wvalue p;
+            p["type"] = "mem";
+            p["cycles"] = memP.selfPressureCycles;
+            p["it"] = iteration;
+            p["origin_it"] = memP.origin.value().iterationIndex;
+            p["origin_offset"] = (int64_t)instructionInfo.instructionIndex - memP.origin.value().instructionIndex;
+            p["origin_addr"] = flow.instructionExecutionInfo[memP.origin.value().instructionIndex].instructionByteOffset + startAddress;
+
+            pressure[pressureCount++] = std::move(p);
+          }
+
+          const auto &rsrcP = instructionInfo.perIteration[iteration].resourcePressure;
+
+          for (const auto &_port : rsrcP.associatedResources)
+          {
+            if (_port.pressureCycles > 0 && _port.origin.has_value())
+            {
+              crow::json::wvalue p;
+              p["type"] = "rsrc";
+              p["cycles"] = _port.pressureCycles;
+              p["it"] = iteration;
+              p["origin_it"] = _port.origin.value().iterationIndex;
+              p["origin_offset"] = (int64_t)instructionInfo.instructionIndex - _port.origin.value().instructionIndex;
+              p["origin_addr"] = flow.instructionExecutionInfo[_port.origin.value().instructionIndex].instructionByteOffset + startAddress;
+              p["port_name"] = _port.resourceName;
+
+              pressure[pressureCount++] = std::move(p);
+            }
+          }
+        }
+
+        instruction["iterations"] = std::move(itsInfo);
+        instruction["pressure"] = std::move(pressure);
+      }
+
+      instruction["dispatched"] = dispatched / (double)iterations;
+      instruction["pending"] = pending / (double)iterations;
+      instruction["ready"] = ready / (double)iterations;
+      instruction["executing"] = executing / (double)iterations;
+      instruction["retiring"] = retiring / (double)iterations;
+      instruction["uops"] = uops / (double)iterations;
+
+      instructions[instructionIndex] = std::move(instruction);
+    }
+
+    ret["instructions"] = std::move(instructions);
+  }
+
   // Overall Stats.
   {
     std::vector<size_t> perPortUsage(flow.ports.size(), 0);
     std::vector<bool> portUsed(flow.ports.size(), false);
 
     // Check Utilization in Bounds.
-    for (size_t cycle = allEarliestIssued; cycle < allLastExecuted; cycle++)
+    for (size_t cycle = earliestIssued; cycle < lastExecuted; cycle++)
     {
       for (size_t port = 0; port < portUsed.size(); port++)
         portUsed[port] = false;
@@ -500,7 +630,7 @@ crow::response handle_execution_flow(const crow::request &req)
     size_t stateCyclesInUse[_ES_Count] = {};
 
     // Check States in Bounds.
-    for (size_t cycle = allEarliestDispatch; cycle < allLastRetire; cycle++)
+    for (size_t cycle = earliestDispatch; cycle < lastRetire; cycle++)
     {
       for (size_t s = 0; s < _ES_Count; s++)
         stateInUse[s] = false;
@@ -536,10 +666,10 @@ crow::response handle_execution_flow(const crow::request &req)
 
     const double invLoopItsF = 1.0 / (double)iterations;
 
-    stats["cycles"] = (allLastRetire - allEarliestDispatch) * invLoopItsF;
-    stats["cycles_total"] = allLastRetire - allEarliestDispatch;
-    stats["execution_cycles"] = (allLastExecuted - allEarliestIssued) * invLoopItsF;
-    stats["execution_cycles_total"] = allLastExecuted - allEarliestIssued;
+    stats["cycles"] = (lastRetire - earliestDispatch) * invLoopItsF;
+    stats["cycles_total"] = lastRetire - earliestDispatch;
+    stats["execution_cycles"] = (lastExecuted - earliestIssued) * invLoopItsF;
+    stats["execution_cycles_total"] = lastExecuted - earliestIssued;
 
     stats["iterations"] = iterations;
 
@@ -552,7 +682,7 @@ crow::response handle_execution_flow(const crow::request &req)
     crow::json::wvalue ports;
 
     for (size_t i = 0; i < perPortUsage.size(); i++)
-      ports[i] = (double)perPortUsage[i] / (allLastExecuted - allEarliestIssued);
+      ports[i] = (double)perPortUsage[i] / (lastExecuted - earliestIssued);
 
     stats["ports"] = std::move(ports);
     ret["stats"] = std::move(stats);
