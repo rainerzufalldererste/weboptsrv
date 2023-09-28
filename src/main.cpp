@@ -164,8 +164,8 @@ crow::response handle_compile(const crow::request &req, const CompilerType type,
   else if (march == "gdr") compileCmd.append(" -march=grandridge");
   else if (march == "gtr") compileCmd.append(" -march=graniterapids");
   else if (march == "hsw") compileCmd.append(" -march=haswell");
-  else if (march == "ilc") compileCmd.append(" -march=icelake_client");
-  else if (march == "lcs") compileCmd.append(" -march=icelake_server");
+  else if (march == "ilc") compileCmd.append(" -march=icelake-client");
+  else if (march == "lcs") compileCmd.append(" -march=icelake-server");
   else if (march == "ivb") compileCmd.append(" -march=ivybridge");
   else if (march == "mtl") compileCmd.append(" -march=meteorlake");
   else if (march == "rtl") compileCmd.append(" -march=raptorlake");
@@ -176,7 +176,7 @@ crow::response handle_compile(const crow::request &req, const CompilerType type,
   else if (march == "svm") compileCmd.append(" -march=silvermont");
   else if (march == "slc") compileCmd.append(" -march=skylake");
   else if (march == "slx") compileCmd.append(" -march=skx");
-  else if (march == "sls") compileCmd.append(" -march=skylake_avx512");
+  else if (march == "sls") compileCmd.append(" -march=skylake-avx512");
   else if (march == "tgl") compileCmd.append(" -march=tigerlake");
   else if (march == "trm") compileCmd.append(" -march=tremont");
   else if (march == "zn1") compileCmd.append(" -march=znver1");
