@@ -426,15 +426,137 @@ crow::response handle_execution_flow(const crow::request &req)
 
   const auto &bytes = crow::utility::base64decode(bytesBase64);
 
+  const size_t iterations = 8;
   PortUsageFlow flow;
 
-  if (!execution_flow_create(bytes.c_str(), bytes.size(), &flow, arch, 8, 0))
+  if (!execution_flow_create(bytes.c_str(), bytes.size(), &flow, arch, iterations, 0))
   {
     puts("execution_flow_create failed");
     return crow::response(crow::status::INTERNAL_SERVER_ERROR);
   }
 
   crow::json::wvalue ret;
+
+  size_t allEarliestDispatch = (size_t)-1;
+  size_t allLastRetire = 0;
+  size_t allEarliestIssued = (size_t)-1;
+  size_t allLastExecuted = 0;
+  size_t allTotalDispatched = 0;
+  size_t allTotalPending = 0;
+  size_t allTotalReady = 0;
+  size_t allTotalExecuting = 0;
+  size_t allTotalRetiring = 0;
+
+  // Ports.
+  {
+    crow::json::wvalue ports;
+    size_t i = 0;
+
+    for (const auto &_port : flow.ports)
+      ports[i++] = _port.name;
+
+    ret["ports"] = std::move(ports);
+  }
+
+  // Overall Stats.
+  {
+    std::vector<size_t> perPortUsage(flow.ports.size(), 0);
+    std::vector<bool> portUsed(flow.ports.size(), false);
+
+    // Check Utilization in Bounds.
+    for (size_t cycle = allEarliestIssued; cycle < allLastExecuted; cycle++)
+    {
+      for (size_t port = 0; port < portUsed.size(); port++)
+        portUsed[port] = false;
+
+      for (const auto &_instruction : flow.instructionExecutionInfo)
+      {
+        for (const auto &it : _instruction.perIteration)
+        {
+          // If active: Mark port as used.
+          if (it.clockIssued <= cycle && it.clockExecuted > cycle)
+            for (const auto &_port : _instruction.usage)
+              portUsed[_port.resourceIndex] = true;
+        }
+      }
+
+      for (size_t port = 0; port < portUsed.size(); port++)
+        if (portUsed[port])
+          perPortUsage[port]++;
+    }
+
+    enum ExecutionState
+    {
+      ES_Dispatched,
+      ES_Pending,
+      ES_Ready,
+      ES_Executing,
+      ES_Retiring,
+
+      _ES_Count
+    };
+
+    bool stateInUse[_ES_Count];
+    size_t stateCyclesInUse[_ES_Count] = {};
+
+    // Check States in Bounds.
+    for (size_t cycle = allEarliestDispatch; cycle < allLastRetire; cycle++)
+    {
+      for (size_t s = 0; s < _ES_Count; s++)
+        stateInUse[s] = false;
+
+      for (const auto &_instruction : flow.instructionExecutionInfo)
+      {
+        // If active: Mark state as used.
+        for (const auto &it : _instruction.perIteration)
+        {
+          if (it.clockDispatched <= cycle && it.clockPending > cycle)
+            stateInUse[ES_Dispatched] = true;
+
+          if (it.clockPending <= cycle && it.clockReady > cycle)
+            stateInUse[ES_Pending] = true;
+
+          if (it.clockReady <= cycle && it.clockIssued > cycle)
+            stateInUse[ES_Ready] = true;
+
+          if (it.clockIssued <= cycle && it.clockExecuted > cycle)
+            stateInUse[ES_Executing] = true;
+
+          if (it.clockExecuted <= cycle && it.clockRetired > cycle)
+            stateInUse[ES_Retiring] = true;
+        }
+      }
+
+      for (size_t s = 0; s < _ES_Count; s++)
+        if (stateInUse[s])
+          stateCyclesInUse[s]++;
+    }
+
+    crow::json::wvalue stats;
+
+    const double invLoopItsF = 1.0 / (double)iterations;
+
+    stats["cycles"] = (allLastRetire - allEarliestDispatch) * invLoopItsF;
+    stats["cycles_total"] = allLastRetire - allEarliestDispatch;
+    stats["execution_cycles"] = (allLastExecuted - allEarliestIssued) * invLoopItsF;
+    stats["execution_cycles_total"] = allLastExecuted - allEarliestIssued;
+
+    stats["iterations"] = iterations;
+
+    stats["dispatched"] = stateCyclesInUse[ES_Dispatched];
+    stats["pending"] = stateCyclesInUse[ES_Pending];
+    stats["ready"] = stateCyclesInUse[ES_Ready];
+    stats["executing"] = stateCyclesInUse[ES_Executing];
+    stats["retiring"] = stateCyclesInUse[ES_Retiring];
+
+    crow::json::wvalue ports;
+
+    for (size_t i = 0; i < perPortUsage.size(); i++)
+      ports[i] = (double)perPortUsage[i] / (allLastExecuted - allEarliestIssued);
+
+    stats["ports"] = std::move(ports);
+    ret["stats"] = std::move(stats);
+  }
 
   (void)startAddress;
 
