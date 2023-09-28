@@ -512,12 +512,16 @@ crow::response handle_execution_flow(const crow::request &req)
           itInfo["issued"] = it.clockIssued;
           itInfo["executed"] = it.clockExecuted;
 
-          crow::json::wvalue ports;
+          if (it.usage.size())
+          {
+            crow::json::wvalue ports;
 
-          for (size_t i = 0; i < it.usage.size(); i++)
-            ports[i] = it.usage[i].resourceIndex;
+            for (size_t i = 0; i < it.usage.size(); i++)
+              ports[i] = it.usage[i].resourceIndex;
 
-          itInfo["ports"] = std::move(ports);
+            itInfo["ports"] = std::move(ports);
+          }
+
           itsInfo[iteration] = std::move(itInfo);
 
           const auto &regP = instructionInfo.perIteration[iteration].registerPressure;
