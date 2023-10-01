@@ -94,7 +94,7 @@ crow::response handle_compile(const crow::request &req, const CompilerType type,
   const auto &march = x["march"].s();
   const auto &src = x["src"].s();
 
-  if (src.size() > 1024 * 8)
+  if (src.size() > 1024 * 64)
   {
     printf("Rejecting input, as src size: %" PRIu64 "\n", src.size());
     return crow::response(crow::status::PAYLOAD_TOO_LARGE);
@@ -293,7 +293,7 @@ crow::response handle_zydec(const crow::request &req)
   const auto &bytesBase64 = x["bytes"].s();
   const uint64_t addressDisplayOffset = x["addr"].i();
 
-  if (bytesBase64.size() > 1024 * 2)
+  if (bytesBase64.size() > 1024 * 8)
   {
     printf("Rejecting zydec, as bytesBase64 size: %" PRIu64 "\n", bytesBase64.size());
     return crow::response(crow::status::PAYLOAD_TOO_LARGE);
