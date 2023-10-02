@@ -1578,7 +1578,13 @@ namespace crow
                     allow = allow.substr(0, allow.size() - 2);
                     res = response(204);
                     res.set_header("Allow", allow);
-                    res.set_header("Access-Control-Allow-Origin", "https://optim8.org"); // TODO: MODIFY! THIS IS DODGY AS F*** BUT OTHERWISE CROW REFUSES TO DO THIS... :(
+
+                    // TODO: THIS IS DODGY AS F*** BUT OTHERWISE CROW REFUSES TO DO THIS... :(
+#ifndef WEBOPTSRV_LOCALHOST
+                    res.set_header("Access-Control-Allow-Origin", "https://optim8.org");
+#else
+                    res.set_header("Access-Control-Allow-Origin", "*");
+#endif
                     res.set_header("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT");
                     res.set_header("Access-Control-Allow-Headers", "*");
                     res.end();
@@ -1605,7 +1611,13 @@ namespace crow
                         allow = allow.substr(0, allow.size() - 2);
                         res = response(204);
                         res.set_header("Allow", allow);
-                        res.set_header("Access-Control-Allow-Origin", "https://optim8.org"); // TODO: MODIFY! THIS IS DODGY AS F*** BUT OTHERWISE CROW REFUSES TO DO THIS... :(
+
+                        // TODO: THIS IS DODGY AS F*** BUT OTHERWISE CROW REFUSES TO DO THIS... :(
+#ifndef WEBOPTSRV_LOCALHOST
+                        res.set_header("Access-Control-Allow-Origin", "https://optim8.org");
+#else
+                        res.set_header("Access-Control-Allow-Origin", "*");
+#endif
                         res.set_header("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT");
                         res.set_header("Access-Control-Allow-Headers", "*");
                         res.end();

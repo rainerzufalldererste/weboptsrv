@@ -14,6 +14,8 @@
 #define ASIO_STANDALONE 1
 #define ASIO_NO_EXCEPTIONS 1
 
+//#define WEBOPTSRV_LOCALHOST
+
 namespace asio
 {
   namespace detail
@@ -63,7 +65,11 @@ int32_t main(void)
   crow::App<crow::CORSHandler> app;
 
   auto &cors = app.get_middleware<crow::CORSHandler>();
+#ifndef WEBOPTSRV_LOCALHOST
   cors.global().origin("https://optim8.org");
+#else
+  cors.global().origin("*");
+#endif
 
   CROW_ROUTE(app, "/g++-x64-11").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_GCCpp, 11); });
   CROW_ROUTE(app, "/g++-x64-12").methods(crow::HTTPMethod::POST)([](const crow::request &req) { return handle_compile(req, CT_GCCpp, 12); });
