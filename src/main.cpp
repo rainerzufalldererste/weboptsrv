@@ -107,7 +107,7 @@ crow::response handle_compile(const crow::request &req, const CompilerType type,
   }
 
   std::string compileCmd;
-  std::string dumpCmd = "objdump -M intel-mnemonic -j .text -C -d --insn-width=15 ";
+  std::string dumpCmd = "objdump -M intel-mnemonic -j .text --line-numbers -C -d --insn-width=15 ";
   std::string objFileName;
 
   switch (type)
@@ -131,7 +131,7 @@ crow::response handle_compile(const crow::request &req, const CompilerType type,
   objFileName.append(std::to_string(requestId));
   objFileName.append(".o");
 
-  compileCmd.append(" -c -o ");
+  compileCmd.append(" -c -g -o ");
   compileCmd.append(objFileName);
 
   dumpCmd.append(std::to_string(requestId));
