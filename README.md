@@ -10,7 +10,7 @@ cd weboptsrv
 
 On Windows: Launch Wsl2 `bash` / `ubuntu` / etc.
 
-Ensure you have the necessary packages installed (In order to use different compiler versions, those obviously need to exist, llvm-17 may need to be installed via their special install script)
+Ensure you have the necessary packages installed (In order to use different compiler versions, those obviously need to exist, llvm-17 may need to be installed via their special install script (see: https://apt.llvm.org/))
 For Ubuntu / Debian based distos
 ```bash
 sudo apt-get install zstd zlib1g zlib1g-dev llvm-17-dev gcc-13 gcc-12 gcc-11 clang-17 clang-16 clang-15 clang-14 build-essential
